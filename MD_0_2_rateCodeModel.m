@@ -11,11 +11,18 @@ runCase = 1; % 1: SR; 2: MR; 3: Shifted; 4: Shuffled
 
 categoryPool = 1:5; % Define Memory Label Here
 
+% 10-25-50-1000 bin size corresponds to 20-50-100-2000 ms
+% spikeBinSize = 10; binTime = 20;
+% spikeBinSize = 25; binTime = 50;
+% spikeBinSize = 50; binTime = 100;
+spikeBinSize = 1000; binTime = 2000;
+
 %% Modeling
 lambda_pool = power(exp(1), 0:-0.03:-9); % Lambda pool for regularization
 nestedFold = 1:5;
 
 MCC_rateCode = zeros(length(categoryPool), 1);
+
 
 switch (runCase)
     case 1
@@ -33,15 +40,15 @@ end
 for ca = categoryPool
 
     switch ca
-        case 1 
+        case 1
             Category = 'Animal';
-        case 2 
+        case 2
             Category = 'Building';
-        case 3 
+        case 3
             Category = 'Plant';
-        case 4 
+        case 4
             Category = 'Tool';
-        case 5 
+        case 5
             Category = 'Vehicle';
     end
 
@@ -52,7 +59,12 @@ for ca = categoryPool
         load(['processedData\', thisCase, '\MD_', Category, '_split', mat2str(currentFold)]);
 
         % Training
-        inputFeature_rateCode = squeeze(mean(TrainingSet_SpikeTensor, 2)); % Averaged spike frequency / firing rate
+
+        % Bin the spikes based on small time window as the rate code
+        reshaped_inputFeature_train = reshape(TrainingSet_SpikeTensor(:, 1:end-1, :), size(TrainingSet_SpikeTensor, 1), spikeBinSize, [], size(TrainingSet_SpikeTensor, 3));
+        binned_average_train = mean(reshaped_inputFeature_train, 2);
+        inputFeature_rateCode = reshape(binned_average_train, size(TrainingSet_SpikeTensor, 1), size(binned_average_train, 3) * size(TrainingSet_SpikeTensor, 3));
+
         outputTarget_rateCode = TrainingSet_target;
         [B, FitInfo] = lassoglm(inputFeature_rateCode, outputTarget_rateCode, 'binomial','CV', 5, 'Lambda', lambda_pool);
         idxLambdaMinDeviance = FitInfo.IndexMinDeviance;
@@ -60,7 +72,12 @@ for ca = categoryPool
         B0 = FitInfo.Intercept(idxLambdaMinDeviance);
 
         % Test
-        testFeature_rateCode = squeeze(mean(TestingSet_SpikeTensor, 2));
+
+        % Bin the spikes based on small time window as the rate code
+        reshaped_inputFeature_test = reshape(TestingSet_SpikeTensor(:, 1:end-1, :), size(TestingSet_SpikeTensor, 1), spikeBinSize, [], size(TestingSet_SpikeTensor, 3));
+        binned_average_test = mean(reshaped_inputFeature_test, 2);
+        testFeature_rateCode = reshape(binned_average_test, size(TestingSet_SpikeTensor, 1), size(binned_average_test, 3) * size(TestingSet_SpikeTensor, 3));
+
         testTarget_rateCode = TestingSet_target;
         y_i_testing = testFeature_rateCode * mincoefs + B0;
         yProb_testing = 1 ./ (1 + exp(-y_i_testing));
